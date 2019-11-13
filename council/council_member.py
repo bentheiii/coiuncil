@@ -23,7 +23,7 @@ class CouncilMember(Generic[R]):
 
         :param args: arguments passed to the council
         :param kwargs: keyword arguments passed to the council
-        :param council_state: the CouncilCallState instance of the current council call
+        :param council_state: the CallState instance of the current council call
         :return: a value to append to the council's result or a MemberAction to issue special instructions
         """
         pass

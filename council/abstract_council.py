@@ -1,15 +1,52 @@
 from __future__ import annotations
 
-from functools import partial, update_wrapper, reduce
-from typing import TypeVar, Generic, Tuple, Any, Dict, Set, Callable, List, Union, Iterable
+from abc import abstractmethod
+from functools import partial, update_wrapper, lru_cache
+from typing import Set, Iterable, TypeVar, Callable, Generic, Tuple, Dict, Any
 
+from council.return_value import MemberAction
 from council.council_member import CouncilMember
-from council.return_value import MemberAction, Append
 
 R = TypeVar('R')
 R2 = TypeVar('R2')
 
-_no_initial = object()
+
+class AbstractCouncil(Generic[R]):
+    @abstractmethod
+    def __call__(self, *args, **kwargs) -> R:
+        pass
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+        return partial(self, instance)
+
+    @abstractmethod
+    def add_member(self, member):
+        pass
+
+    @abstractmethod
+    def remove_member(self, member):
+        pass
+
+    def join_temporary(self, member):
+        """
+        add a member as add_member to the council, and get a callback that removes it
+        :return: a callable that removes the new member from the council. Has a value __member__ that stores the member.
+        """
+        member = self.add_member(member)
+        ret = partial(self.remove_member, member)
+        ret.__member__ = member
+        return ret
+
+    def map(self, func: Callable[[R], R2]) -> MappedCouncil[R, R2]:
+        """
+        :return: a callaback that converts the council's output according to func
+        """
+        return MappedCouncil(self, func)
+
+    def lru_cache(self, *args, **kwargs):
+        return CachedCouncil(self, *args, **kwargs)
 
 
 class CouncilCallState(Generic[R]):
@@ -24,7 +61,15 @@ class CouncilCallState(Generic[R]):
 
         self.dependency_stack = []
         self.pending_members = set(self.council.members)
-        self.partial_result = []
+        self.partial_result = self.make_result()
+
+    @abstractmethod
+    def make_result(self) -> R:
+        pass
+
+    @abstractmethod
+    def default_action(self, out):
+        pass
 
     def call_next(self):
         """
@@ -41,20 +86,16 @@ class CouncilCallState(Generic[R]):
 
         out = member.call(self.args, self.kwargs, self)
         if not isinstance(out, MemberAction):
-            out = Append(out)
+            out = self.default_action(out)
         return out(member, self)
 
-    def __call__(self):
+    def __call__(self) -> R:
         while self.call_next():
             pass
         return self.partial_result
 
 
-class Council(Generic[R]):
-    """
-    The central class, an aggregate of council members that processes them all for a call
-    """
-
+class Council(Generic[R], AbstractCouncil[R]):
     def __init__(self, name: str = None, decorators=()):
         """
         :param name: the name of the council
@@ -68,34 +109,18 @@ class Council(Generic[R]):
             self.__name__ = name
 
     @classmethod
-    def from_template(cls, template=None, *, update_annotations=True, **kwargs) \
-            -> Union[Council[R], Callable[..., Council[R]]]:
+    def from_template(cls, template=None, **kwargs):
         """
         will create a council based on a wrapped callable, usable as decorator
         :param template: the object to base on, most likely a function. Will never be called.
-        :param update_annotations: Whether to ensure that the council's __annotations__ are correct
         :param kwargs: forwarded to Council.__init__
         """
         if template is None:
-            return partial(cls.from_template, update_annotations=update_annotations, **kwargs)
+            return partial(cls.from_template, **kwargs)
 
         name = getattr(template, '__name__', None)
         ret = cls(name, **kwargs)
         update_wrapper(ret, template)
-
-        if update_annotations:
-            ret_annotations = getattr(ret, '__annotations__', None)
-            if ret_annotations:
-                globns = getattr(ret, '__globals__', {})
-                globns.update(getattr(template, '__globals__', {}))
-                r = ret_annotations.get('return')
-                if r:
-                    ret_annotations['return'] = List[r]
-                else:
-                    ret_annotations['return'] = 'list'
-                ret.__globals__ = globns
-            else:
-                ret.__annotations__ = {'return': 'list'}
         return ret
 
     def __set_name__(self, owner, name):
@@ -105,18 +130,13 @@ class Council(Generic[R]):
         elif ex_name != name:
             raise ValueError(f'this council already has an assigned name {ex_name}')
 
-    def __get__(self, instance, owner):
-        if instance is None:
-            return self
-        return partial(self, instance)
-
     def call_state(self, args, kwargs):
         """
         Generate a new call state for the council
         """
-        return CouncilCallState(self, args, kwargs)
+        return self.CallState(self, args, kwargs)
 
-    def __call__(self, *args, **kwargs) -> List[R]:
+    def __call__(self, *args, **kwargs) -> R:
         call_state = self.call_state(args, kwargs)
         return call_state()
 
@@ -140,37 +160,50 @@ class Council(Generic[R]):
         """
         self.members.remove(member)
 
-    def join_temporary(self, member):
-        """
-        add a member as add_member to the council, and get a callback that removes it
-        :return: a callable that removes the new member from the council. Has a value __member__ that stores the member.
-        """
-        member = self.add_member(member)
-        ret = partial(self.remove_member, member)
-        ret.__member__ = member
-        return ret
-
-    def __str__(self):
+    def __repr__(self):
         try:
             return f'{type(self).__name__}({self.__name__!r})'
         except AttributeError:
-            return super().__str__()
+            return super().__repr__()
 
-    def aggregate(self, func: Callable[[List[R]], R2]) -> Callable[..., R2]:
-        """
-        :return: a callaback that converts the council's output according to func
-        """
-        return lambda *a, **k: func(self(*a, **k))
 
-    def reduce(self, func: Callable[[R2, R], R2], initial: R2 = _no_initial) -> Callable[..., R2]:
-        """
-        :return: a callaback that converts the council's output according to func (using reduction)
-        """
-        if initial is _no_initial:
-            return self.aggregate(
-                lambda a: reduce(func, a)
-            )
-        else:
-            return self.aggregate(
-                lambda a: reduce(func, a, initial)
-            )
+class MappedCouncil(Generic[R, R2], AbstractCouncil[R2]):
+    def __init__(self, council: AbstractCouncil[R], conv: Callable[..., R2]):
+        self.council = council
+        self.conv = conv
+
+    def __call__(self, *args, **kwargs):
+        ret = self.council(*args, **kwargs)
+        return self.conv(ret)
+
+    def __repr__(self):
+        return f'{self.council!r}.map({self.conv!r})'
+
+    def add_member(self, member):
+        return self.council.add_member(member)
+
+    def remove_member(self, member):
+        return self.council.remove_member(member)
+
+
+class CachedCouncil(Generic[R], AbstractCouncil[R]):
+    """
+    A council that caches its results. Note that the council returns tuples, not lists.
+    """
+
+    def __init__(self, inner: AbstractCouncil[R], *args, **kwargs):
+        self.inner = inner
+        self.cache = lru_cache(*args, **kwargs)(inner)
+
+    def __call__(self, *args, **kwargs) -> Tuple[R]:
+        return self.cache(*args, **kwargs)
+
+    def add_member(self, member):
+        ret = super().add_member(member)
+        self.cache.cache_clear()
+        return ret
+
+    def remove_member(self, member):
+        ret = super().remove_member(member)
+        self.cache.cache_clear()
+        return ret

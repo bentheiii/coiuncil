@@ -5,7 +5,7 @@ from council import *
 
 class CouncilTests(TestCase):
     def test_simple(self):
-        c = Council()
+        c = ListCouncil()
 
         @c.add_member
         @none_continues
@@ -37,7 +37,7 @@ class CouncilTests(TestCase):
         self.assertEqual(fizzbuzz(93), 'Fizz')
 
     def test_decorator(self):
-        @Council.from_template(decorators=[truth_breaks, non_truth_continues])
+        @ListCouncil.from_template(decorators=[truth_breaks, non_truth_continues])
         def seven_boom(x: int) -> bool:
             pass
 
@@ -49,7 +49,7 @@ class CouncilTests(TestCase):
         def has_7(x) -> bool:
             return '7' in str(x)
 
-        seven_boom = seven_boom.aggregate(bool)
+        seven_boom = seven_boom.map(bool)
 
         for x in (7, 78, 0, 84):
             self.assertTrue(seven_boom(x), x)
