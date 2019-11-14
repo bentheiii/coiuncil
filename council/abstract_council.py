@@ -61,15 +61,7 @@ class CouncilCallState(Generic[R]):
 
         self.dependency_stack = []
         self.pending_members = set(self.council.members)
-        self.partial_result = self.make_result()
-
-    @abstractmethod
-    def make_result(self) -> R:
-        pass
-
-    @abstractmethod
-    def default_action(self, out):
-        pass
+        self.partial_result = self.council.initial_result()
 
     def call_next(self):
         """
@@ -86,7 +78,7 @@ class CouncilCallState(Generic[R]):
 
         out = member.call(self.args, self.kwargs, self)
         if not isinstance(out, MemberAction):
-            out = self.default_action(out)
+            out = self.council.default_action(out)
         return out(member, self)
 
     def __call__(self) -> R:
@@ -134,7 +126,15 @@ class Council(Generic[R], AbstractCouncil[R]):
         """
         Generate a new call state for the council
         """
-        return self.CallState(self, args, kwargs)
+        return CouncilCallState(self, args, kwargs)
+
+    @abstractmethod
+    def initial_result(self) -> R:
+        pass
+
+    @abstractmethod
+    def default_action(self, out) -> MemberAction:
+        pass
 
     def __call__(self, *args, **kwargs) -> R:
         call_state = self.call_state(args, kwargs)
@@ -165,6 +165,29 @@ class Council(Generic[R], AbstractCouncil[R]):
             return f'{type(self).__name__}({self.__name__!r})'
         except AttributeError:
             return super().__repr__()
+
+    class Modify(MemberAction):
+        def __init__(self, func):
+            self.func = func
+
+        def __call__(self, current, state) -> bool:
+            state.partial_result = self.func(state.partial_result)
+            return True
+
+    class Mutate(MemberAction):
+        def __init__(self, func):
+            self.func = func
+
+        def __call__(self, current, state) -> bool:
+            self.func(state.partial_result)
+            return True
+
+    class ResetClass(MemberAction):
+        def __call__(self, current, state) -> bool:
+            state.partial_result = state.council.initial_result()
+            return True
+
+    Reset = ResetClass()
 
 
 class MappedCouncil(Generic[R, R2], AbstractCouncil[R2]):

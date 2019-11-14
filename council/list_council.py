@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from functools import partial, update_wrapper, reduce
-from itertools import chain
+from functools import reduce
 from typing import TypeVar, Generic, Tuple, Any, Dict, Set, Callable, List, Union, Iterable
 
-from council.abstract_council import CouncilCallState, Council
-from council.council_member import CouncilMember
+from council.abstract_council import Council
 from council.return_value import MemberAction
 
 R = TypeVar('R')
@@ -15,12 +13,11 @@ _no_initial = object()
 
 
 class ListCouncil(Council[List[R]], Generic[R]):
-    class CallState(CouncilCallState):
-        def make_result(self):
-            return []
+    def initial_result(self):
+        return []
 
-        def default_action(self, out):
-            return ListCouncil.Append(out)
+    def default_action(self, out):
+        return self.Append(out)
 
     def reduce(self, func: Callable[[R2, R], R2], initial: R2 = _no_initial) -> Callable[..., R2]:
         """
@@ -102,3 +99,10 @@ class ListCouncil(Council[List[R]], Generic[R]):
                             reverse=True):
                 state.partial_result.pop(a)
             return True
+
+    class ResetClass(MemberAction):
+        def __call__(self, current, state) -> bool:
+            state.partial_result.clear()
+            return True
+
+    Reset = ResetClass()

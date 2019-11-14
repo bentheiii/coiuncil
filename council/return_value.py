@@ -7,8 +7,7 @@ from typing import Protocol, runtime_checkable, Iterable, Union
 from council.council_member import CouncilMember
 
 
-@runtime_checkable
-class MemberAction(Protocol):
+class MemberAction:
     """
     A member action is an object that, when returned by a member, may influence the computation of the council
     """
@@ -98,20 +97,7 @@ class DefaultWrapper(MemberAction):
         self.val = val
 
     def __call__(self, current, state):
-        return state.default_action(self.val)(current, state)
-
-
-class ClearResultClass(MemberAction):
-    """
-    Clear the result list entirely
-    """
-
-    def __call__(self, current, state):
-        state.partial_result.clear()
-        return True
-
-
-ClearResult = ClearResultClass()
+        return state.council.default_action(self.val)(current, state)
 
 
 class Joined(MemberAction):
