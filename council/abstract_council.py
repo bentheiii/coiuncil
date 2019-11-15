@@ -223,10 +223,13 @@ class CachedCouncil(Generic[R], AbstractCouncil[R]):
 
     def add_member(self, member):
         ret = super().add_member(member)
-        self.cache.cache_clear()
+        self.cache_clear()
         return ret
 
     def remove_member(self, member):
         ret = super().remove_member(member)
-        self.cache.cache_clear()
+        self.cache_clear()
         return ret
+
+    def cache_clear(self):
+        self.cache.cache_clear()
