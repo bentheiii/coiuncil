@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
 
-from council import CouncilMember, Postpone, Continue, Break, MemberAction
+from council.council_member import CouncilMember
+from council.return_value import Postpone, Continue, Break, MemberAction
 
 
 class MemberWrapper(CouncilMember):
     def __init__(self, inner: CouncilMember):
+        super().__init__()
         self.inner = CouncilMember.coerce(inner)
 
     def call(self, args, kwargs, council_state):

@@ -29,6 +29,9 @@ class AbstractCouncil(Generic[R]):
     def remove_member(self, member):
         pass
 
+    def on_member_change(self, member):
+        pass
+
     def join_temporary(self, member):
         """
         add a member as add_member to the council, and get a callback that removes it
@@ -87,7 +90,7 @@ class CouncilCallState(Generic[R]):
         return self.partial_result
 
 
-class Council(Generic[R], AbstractCouncil[R]):
+class Council(AbstractCouncil[R], Generic[R]):
     def __init__(self, name: str = None, decorators=()):
         """
         :param name: the name of the council
@@ -152,6 +155,7 @@ class Council(Generic[R], AbstractCouncil[R]):
         for ad in reversed(self.member_wrappers):
             member = ad(member)
         self.members.add(member)
+        member.introduce(self)
         return member
 
     def remove_member(self, member):
@@ -159,6 +163,7 @@ class Council(Generic[R], AbstractCouncil[R]):
         remove a member from the council
         """
         self.members.remove(member)
+        member.depart(self)
 
     def __repr__(self):
         try:
@@ -190,7 +195,7 @@ class Council(Generic[R], AbstractCouncil[R]):
     Reset = ResetClass()
 
 
-class MappedCouncil(Generic[R, R2], AbstractCouncil[R2]):
+class MappedCouncil(AbstractCouncil[R2], Generic[R, R2]):
     def __init__(self, council: AbstractCouncil[R], conv: Callable[..., R2]):
         self.council = council
         self.conv = conv
@@ -207,6 +212,9 @@ class MappedCouncil(Generic[R, R2], AbstractCouncil[R2]):
 
     def remove_member(self, member):
         return self.council.remove_member(member)
+
+    def on_member_change(self, member):
+        return self.council.on_member_change(member)
 
 
 class CachedCouncil(Generic[R], AbstractCouncil[R]):
@@ -233,3 +241,7 @@ class CachedCouncil(Generic[R], AbstractCouncil[R]):
 
     def cache_clear(self):
         self.cache.cache_clear()
+
+    def on_member_change(self, member):
+        self.cache_clear()
+        return self.inner.on_member_change(member)

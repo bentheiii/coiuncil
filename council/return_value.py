@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from itertools import chain
-from typing import Protocol, runtime_checkable, Iterable, Union
+from typing import Iterable
 
 from council.council_member import CouncilMember
 
@@ -123,4 +123,4 @@ class Joined(MemberAction):
         return type(self)((other, *self.parts))
 
 
-__all__ = ['MemberAction', 'Continue', 'Break', 'Postpone', 'Enqueue', 'ClearResult']
+__all__ = ['Continue', 'Break', 'Postpone', 'Enqueue', 'MemberAction']
