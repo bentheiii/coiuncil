@@ -199,6 +199,7 @@ class MappedCouncil(AbstractCouncil[R2], Generic[R, R2]):
     def __init__(self, council: AbstractCouncil[R], conv: Callable[..., R2]):
         self.council = council
         self.conv = conv
+        update_wrapper(self, council)
 
     def __call__(self, *args, **kwargs):
         ret = self.council(*args, **kwargs)
@@ -225,6 +226,7 @@ class CachedCouncil(Generic[R], AbstractCouncil[R]):
     def __init__(self, inner: AbstractCouncil[R], *args, **kwargs):
         self.inner = inner
         self.cache = lru_cache(*args, **kwargs)(inner)
+        update_wrapper(self, inner)
 
     def __call__(self, *args, **kwargs) -> Tuple[R]:
         return self.cache(*args, **kwargs)
