@@ -25,12 +25,11 @@ class MemberAction:
 
     def __add__(self, other):
         if not isinstance(other, MemberAction):
-            other = DefaultWrapper(other)
+            other = DefaultAction(other)
         return Joined((self, other))
 
     def __radd__(self, other):
-        if not isinstance(other, MemberAction):
-            other = DefaultWrapper(other)
+        other = DefaultAction(other)
         return other + self
 
 
@@ -69,7 +68,8 @@ class Postpone(MemberAction):
         self.wait_for = wait_for
 
     def __call__(self, current, state):
-        state.dependency_stack.append(current)
+        if current not in state.dependency_stack:
+            state.dependency_stack.append(current)
         for wf in self.wait_for:
             try:
                 state.pending_members.remove(wf)
@@ -92,7 +92,7 @@ class Enqueue(MemberAction):
         return True
 
 
-class DefaultWrapper(MemberAction):
+class DefaultAction(MemberAction):
     def __init__(self, val):
         self.val = val
 
@@ -117,10 +117,9 @@ class Joined(MemberAction):
     def __add__(self, other):
         if isinstance(other, type(self)):
             return type(self)(chain(self.parts, other.parts))
+        if not isinstance(other, MemberAction):
+            other = DefaultAction(other)
         return type(self)((*self.parts, other))
-
-    def __radd__(self, other):
-        return type(self)((other, *self.parts))
 
 
 __all__ = ['Continue', 'Break', 'Postpone', 'Enqueue', 'MemberAction']
